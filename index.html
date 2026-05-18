@@ -1,0 +1,2025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhotoMind — AI Duplicate Cleaner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700;800&family=Instrument+Sans:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+:root {
+  --bg:       #0d0d0f;
+  --surface:  #131316;
+  --panel:    #18181c;
+  --border:   #26262e;
+  --border2:  #32323c;
+  --text:     #e8e8f0;
+  --muted:    #7a7a8c;
+  --dim:      #44445a;
+  --accent:   #7c6af7;
+  --accent2:  #a98ff7;
+  --green:    #3dd68c;
+  --red:      #f75a5a;
+  --amber:    #f7b955;
+  --blue:     #4a9af5;
+  --teal:     #2dd4bf;
+  --mono:     'DM Mono', monospace;
+  --display:  'Syne', sans-serif;
+  --body:     'Instrument Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Layout ── */
+.layout { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh; overflow: hidden;
+}
+.main { display: flex; flex-direction: column; min-height: 100vh; }
+
+/* ── Sidebar ── */
+.sidebar-header {
+  padding: 24px 20px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--text);
+}
+.logo span { color: var(--accent2); }
+.logo-sub { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 3px; letter-spacing: 2px; }
+
+.sidebar-section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.sidebar-section h3 {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--dim); margin-bottom: 12px;
+}
+
+.input-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.input-row label { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.input-row input {
+  background: var(--panel); border: 1px solid var(--border2);
+  border-radius: 6px; padding: 8px 10px;
+  color: var(--text); font-family: var(--mono); font-size: 11px;
+  width: 100%; outline: none; transition: border-color 0.15s;
+}
+.input-row input:focus { border-color: var(--accent); }
+
+.btn {
+  padding: 9px 16px; border-radius: 7px; border: none;
+  font-family: var(--mono); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s; width: 100%;
+  letter-spacing: 0.5px;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-ghost {
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border2);
+}
+.btn-ghost:hover { border-color: var(--border); color: var(--text); }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px;
+}
+.stat-num { font-family: var(--display); font-size: 22px; font-weight: 700; color: var(--text); }
+.stat-label { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+.tier-filters { display: flex; flex-direction: column; gap: 4px; }
+.tier-btn {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 10px; border-radius: 6px; cursor: pointer;
+  background: transparent; border: 1px solid transparent;
+  transition: all 0.12s; font-family: var(--body); font-size: 13px; color: var(--muted);
+}
+.tier-btn:hover { background: var(--panel); color: var(--text); }
+.tier-btn.active { background: var(--panel); border-color: var(--border2); color: var(--text); }
+.tier-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; }
+.tier-count { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+
+.progress-bar-wrap { margin-top: 12px; }
+.progress-bar {
+  background: var(--panel); border-radius: 4px; height: 4px;
+  overflow: hidden; margin-top: 6px;
+}
+.progress-fill {
+  height: 100%; background: var(--accent);
+  border-radius: 4px; transition: width 0.4s ease;
+  width: 0%;
+}
+.progress-msg { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.progress-counter { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-top: 6px; text-align: right; }
+.scan-status { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; }
+
+.memory-stats { display: flex; flex-direction: column; gap: 5px; }
+.mem-row { display: flex; justify-content: space-between; }
+.mem-key { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.mem-val { font-family: var(--mono); font-size: 11px; color: var(--text); }
+
+/* ── Saved Scans ── */
+.saved-scans-list { max-height: 200px; overflow-y: auto; margin-bottom: 12px; }
+.saved-scan-empty { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: center; padding: 20px; }
+.saved-scan-item {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px; margin-bottom: 8px;
+  cursor: pointer; transition: all 0.15s;
+}
+.saved-scan-item:hover { border-color: var(--border2); }
+.saved-scan-item:last-child { margin-bottom: 0; }
+.saved-scan-name { font-family: var(--body); font-size: 12px; font-weight: 500; color: var(--text); }
+.saved-scan-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px; }
+.saved-scan-actions { display: flex; gap: 6px; margin-top: 8px; }
+.saved-scan-load { background: var(--accent); color: #fff; border: none; padding: 4px 8px; border-radius: 4px; font-family: var(--mono); font-size: 10px; cursor: pointer; }
+.saved-scan-delete { background: var(--red); color: #fff; border: none; padding: 4px 8px; border-radius: 4px; font-family: var(--mono); font-size: 10px; cursor: pointer; }
+
+/* ── Modals ── */
+.modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+.modal.active { display: flex; align-items: center; justify-content: center; }
+.modal-content { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; max-width: 600px; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+.modal-header { font-family: var(--display); font-size: 22px; font-weight: 700; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+.modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted); }
+.modal-close:hover { color: var(--text); }
+.modal-body { margin-bottom: 20px; }
+.modal-row { margin-bottom: 16px; }
+.modal-label { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+.modal-input { width: 100%; padding: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--body); font-size: 13px; }
+.modal-input:focus { outline: none; border-color: var(--accent); }
+.modal-checkbox { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; cursor: pointer; }
+.modal-checkbox input { cursor: pointer; }
+.modal-checkbox label { cursor: pointer; color: var(--text); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-apply { background: var(--green); color: #000; border: none; padding: 10px 20px; border-radius: 6px; font-family: var(--mono); font-weight: 600; cursor: pointer; }
+.btn-apply:hover { opacity: 0.9; }
+.btn-cancel { background: var(--panel); color: var(--text); border: 1px solid var(--border); padding: 10px 20px; border-radius: 6px; font-family: var(--mono); cursor: pointer; }
+.btn-cancel:hover { border-color: var(--border2); }
+.report-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.report-stat { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.report-stat-value { font-family: var(--display); font-size: 28px; font-weight: 700; color: var(--accent); }
+.report-stat-label { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px; text-transform: uppercase; }
+.report-files { max-height: 300px; overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+.report-file-item { font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 4px 0; border-bottom: 1px solid var(--border); }
+.report-file-item:last-child { border-bottom: none; }
+
+/* ── Group list (scrollable right panel) ── */
+.groups-header {
+  padding: 20px 28px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--surface);
+  position: sticky; top: 0; z-index: 10;
+}
+.groups-title { font-family: var(--display); font-size: 18px; font-weight: 700; }
+.groups-subtitle { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 2px; }
+.header-actions { display: flex; gap: 8px; }
+.btn-sm {
+  padding: 6px 12px; border-radius: 6px; border: none;
+  font-family: var(--mono); font-size: 11px; cursor: pointer; transition: all 0.15s;
+}
+.btn-sm-primary { background: var(--accent); color: #fff; }
+.btn-sm-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border2); }
+.btn-sm-ghost:hover { color: var(--text); border-color: var(--border); }
+
+.groups-list { padding: 16px 28px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+
+/* ── Group Card ── */
+.group-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.group-card:hover { border-color: var(--border2); }
+.group-card.decided { border-color: rgba(61,214,140,0.25); }
+.group-card.expanded { border-color: var(--accent); }
+
+.group-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; cursor: pointer;
+}
+.group-tier-badge {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  padding: 3px 8px; border-radius: 4px; letter-spacing: 1px; text-transform: uppercase;
+  flex-shrink: 0;
+}
+.tier-exact   { background: rgba(247,90,90,0.15);  color: var(--red);   border: 1px solid rgba(247,90,90,0.25); }
+.tier-near    { background: rgba(247,185,85,0.15); color: var(--amber); border: 1px solid rgba(247,185,85,0.25); }
+.tier-semantic{ background: rgba(124,106,247,0.15);color: var(--accent);border: 1px solid rgba(124,106,247,0.25); }
+.tier-burst   { background: rgba(45,212,191,0.15); color: var(--teal);  border: 1px solid rgba(45,212,191,0.25); }
+
+.group-info { flex: 1; }
+.group-name { font-family: var(--body); font-size: 13px; font-weight: 500; color: var(--text); }
+.group-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+.group-right { display: flex; align-items: center; gap: 10px; }
+.similarity-bar {
+  width: 60px; height: 4px; background: var(--panel); border-radius: 2px; overflow: hidden;
+}
+.similarity-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+.sim-label { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.chevron { color: var(--dim); font-size: 12px; transition: transform 0.2s; }
+.expanded .chevron { transform: rotate(180deg); }
+.decided-badge {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--green); padding: 2px 7px;
+  background: rgba(61,214,140,0.1); border-radius: 4px;
+  border: 1px solid rgba(61,214,140,0.2);
+}
+
+/* ── Thumbnails strip (collapsed) ── */
+.thumb-strip {
+  padding: 0 18px 14px;
+  display: flex; gap: 8px; overflow-x: auto;
+}
+.thumb-mini {
+  width: 60px; height: 60px; border-radius: 6px;
+  object-fit: cover; flex-shrink: 0;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.thumb-mini.best { border-color: var(--accent2); }
+
+/* ── Expanded review panel ── */
+.review-panel { border-top: 1px solid var(--border); padding: 20px 18px; }
+
+.photos-grid {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.photo-slot {
+  border: 2px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+  cursor: pointer; transition: all 0.15s;
+  position: relative;
+  background: var(--panel);
+}
+.photo-slot:hover { border-color: var(--border2); }
+.photo-slot.selected { border-color: var(--green); }
+.photo-slot.ai-pick  { border-color: var(--accent2); }
+.photo-slot.disqualified { opacity: 0.6; }
+
+.photo-img-wrap { position: relative; aspect-ratio: 4/3; overflow: hidden; }
+.photo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.photo-badges {
+  position: absolute; top: 8px; left: 8px;
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.badge {
+  font-family: var(--mono); font-size: 9px; font-weight: 500;
+  padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.badge-ai    { background: rgba(124,106,247,0.85); color: #fff; }
+.badge-keep  { background: rgba(61,214,140,0.85);  color: #0d0d0f; }
+.badge-issue { background: rgba(247,90,90,0.85);   color: #fff; }
+
+.quality-bar-row {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 3px;
+}
+.quality-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), var(--amber), var(--green));
+  background-size: 300% 100%;
+}
+
+.photo-meta {
+  padding: 10px 12px;
+}
+.photo-filename { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.photo-score-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.photo-score { font-family: var(--display); font-size: 18px; font-weight: 700; }
+.photo-dims { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+
+.issue-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+.issue-tag {
+  font-family: var(--mono); font-size: 9px;
+  padding: 2px 6px; border-radius: 3px;
+  background: rgba(247,90,90,0.12);
+  color: var(--red); border: 1px solid rgba(247,90,90,0.2);
+}
+
+.llm-reason { font-family: var(--body); font-size: 11px; color: var(--muted); margin-top: 6px; font-style: italic; }
+
+/* ── Decision section ── */
+.decision-section {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px; margin-top: 4px;
+}
+.decision-title { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); margin-bottom: 12px; }
+
+.llm-rec-box {
+  background: rgba(124,106,247,0.08); border: 1px solid rgba(124,106,247,0.2);
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.llm-rec-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.llm-rec-text { font-family: var(--body); font-size: 12px; color: var(--muted); line-height: 1.5; }
+.llm-confidence { font-family: var(--mono); font-size: 10px; color: var(--accent2); margin-top: 4px; }
+
+.reason-tags-grid {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;
+}
+.reason-tag-btn {
+  font-family: var(--mono); font-size: 10px;
+  padding: 4px 9px; border-radius: 5px; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border2);
+  color: var(--muted); transition: all 0.12s;
+}
+.reason-tag-btn:hover { border-color: var(--border); color: var(--text); }
+.reason-tag-btn.selected {
+  background: rgba(124,106,247,0.15); border-color: var(--accent);
+  color: var(--accent2);
+}
+
+.notes-row { margin-bottom: 12px; }
+.notes-row textarea {
+  width: 100%; background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 7px; padding: 9px 11px;
+  color: var(--text); font-family: var(--body); font-size: 12px;
+  resize: vertical; min-height: 56px; outline: none;
+  transition: border-color 0.15s; line-height: 1.5;
+}
+.notes-row textarea:focus { border-color: var(--accent); }
+
+.decision-actions { display: flex; gap: 8px; }
+.btn-confirm {
+  flex: 1; padding: 10px; border-radius: 8px; border: none;
+  font-family: var(--mono); font-size: 12px; font-weight: 500;
+  cursor: pointer; background: var(--green); color: #0d0d0f;
+  transition: all 0.15s; letter-spacing: 0.5px;
+}
+.btn-confirm:hover { filter: brightness(1.1); }
+.btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-skip {
+  padding: 10px 18px; border-radius: 8px;
+  border: 1px solid var(--border2); background: transparent;
+  color: var(--muted); font-family: var(--mono); font-size: 12px;
+  cursor: pointer; transition: all 0.15s;
+}
+.btn-skip:hover { color: var(--text); border-color: var(--border); }
+
+/* ── Empty / loading states ── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 80px 40px; text-align: center; flex: 1;
+}
+.empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
+.empty-title { font-family: var(--display); font-size: 20px; font-weight: 600; color: var(--muted); }
+.empty-sub { font-family: var(--body); font-size: 13px; color: var(--dim); margin-top: 8px; }
+
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--panel); border: 1px solid var(--border2);
+  border-radius: 10px; padding: 12px 16px;
+  font-family: var(--mono); font-size: 12px; color: var(--text);
+  z-index: 100; animation: slideUp 0.25s ease;
+  max-width: 320px; line-height: 1.5;
+}
+.toast.success { border-color: rgba(61,214,140,0.4); }
+.toast.error   { border-color: rgba(247,90,90,0.4); }
+@keyframes slideUp {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+.sidebar-scroll { overflow-y: auto; flex: 1; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 2px; }
+
+/* ── Mode tabs ── */
+.mode-tabs {
+  display: flex; gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.mode-tab {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+  text-transform: uppercase; padding: 11px 16px;
+  border: none; background: transparent; color: var(--muted);
+  cursor: pointer; border-bottom: 2px solid transparent;
+  transition: all 0.15s; margin-bottom: -1px;
+}
+.mode-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.mode-tab:hover:not(.active) { color: var(--text); }
+
+/* ── Document group card ── */
+.doc-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.doc-card:hover { border-color: var(--border2); }
+.doc-card.decided { border-color: rgba(61,214,140,0.25); }
+.doc-card.expanded { border-color: var(--accent); }
+
+.doc-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; cursor: pointer;
+}
+.doc-type-icon { font-size: 22px; flex-shrink: 0; }
+.doc-info { flex: 1; min-width: 0; }
+.doc-name { font-family: var(--body); font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+.doc-review-panel { border-top: 1px solid var(--border); padding: 16px 18px; }
+.doc-files-grid { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+
+.doc-file-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: 8px;
+  border: 2px solid var(--border);
+  background: var(--panel);
+  cursor: pointer; transition: all 0.15s;
+}
+.doc-file-row:hover { border-color: var(--border2); }
+.doc-file-row.selected { border-color: var(--green); background: rgba(61,214,140,0.06); }
+
+.doc-file-icon { font-size: 28px; flex-shrink: 0; }
+.doc-file-info { flex: 1; min-width: 0; }
+.doc-file-name { font-family: var(--mono); font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-file-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
+.doc-file-badge { font-family: var(--mono); font-size: 9px; padding: 2px 7px; border-radius: 3px; }
+.doc-keep-badge { background: rgba(61,214,140,0.85); color: #0d0d0f; }
+
+.doc-decision-section {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px; margin-top: 4px;
+}
+
+/* ── Doc stats ── */
+.doc-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ── Cache stats ── */
+.cache-stat-row { display:flex; justify-content:space-between; margin-bottom:5px; }
+.cache-stat-key { font-family:var(--mono); font-size:11px; color:var(--muted); }
+.cache-stat-val { font-family:var(--mono); font-size:11px; color:var(--text); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">Photo<span>Mind</span></div>
+      <div class="logo-sub">AI DUPLICATE CLEANER</div>
+    </div>
+
+    <!-- Mode tabs inside sidebar -->
+    <div class="mode-tabs">
+      <button class="mode-tab active" id="tabPhotos" onclick="switchMode('photos')">📷 Photos</button>
+      <button class="mode-tab" id="tabDocs"   onclick="switchMode('docs')">📄 Documents</button>
+    </div>
+
+    <div class="sidebar-scroll">
+
+      <!-- ═══ PHOTOS SIDEBAR ═══ -->
+      <div id="sidebarPhotos">
+        <!-- Scan config -->
+        <div class="sidebar-section">
+          <h3>Scan Folder</h3>
+          <div class="input-row">
+            <label>FOLDER PATH</label>
+            <input type="text" id="folderInput" placeholder="/Users/you/Photos" />
+          </div>
+          <div class="input-row">
+            <label>OUTPUT FOLDER (auto)</label>
+            <input type="text" id="outputInput" placeholder="leave blank = auto" />
+          </div>
+          <div class="input-row">
+            <label>EXCLUDE FOLDERS (comma-separated names)</label>
+            <input type="text" id="excludedDirsInput"
+                   placeholder="duplicates_backup, .venv, Downloads"
+                   title="Folder names (not full paths) to skip during scan" />
+          </div>
+          <button class="btn btn-primary" id="scanBtn" onclick="startScan()">Run Scan</button>
+          <div class="scan-status" id="scanStatus">Ready to scan</div>
+          <div class="progress-bar-wrap" id="progressWrap" style="display:none">
+            <div class="progress-msg" id="progressMsg">Starting…</div>
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <div class="progress-counter" id="progressCounter">0 / 0 files</div>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="sidebar-section">
+          <h3>Current Scan</h3>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-num" id="statImages">—</div>
+              <div class="stat-label">IMAGES</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="statGroups">—</div>
+              <div class="stat-label">GROUPS</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="statUndecided">—</div>
+              <div class="stat-label">UNDECIDED</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="statTime">—</div>
+              <div class="stat-label">SCAN TIME</div>
+            </div>
+          </div>
+        </div>
+
+      <!-- Apply duplicates to folder -->
+      <div class="sidebar-section" id="photoApplySection" style="display:none">
+        <h3>Move Duplicates</h3>
+        <div class="input-row">
+          <label>TARGET FOLDER (duplicates go here)</label>
+          <input type="text" id="photoTargetInput" placeholder="leave blank = auto" />
+        </div>
+        <p style="font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+          Keeps the best-quality image in each group. Copies all others to the target folder and deletes them from source.
+        </p>
+        <button class="btn btn-ghost" onclick="showPhotoApplyModal(false)" style="margin-bottom:6px">Dry Run (preview)</button>
+        <button class="btn btn-ghost" id="photoApplyBtn"
+                onclick="showPhotoApplyModal(true)"
+                style="color:var(--amber);border-color:rgba(247,185,85,0.3)">
+          ✓ Apply &amp; Move Duplicates
+        </button>
+      </div>
+
+      <!-- Transfer to target folder -->
+      <div class="sidebar-section" id="transferSection" style="display:none">
+        <h3>Transfer to Folder</h3>
+        <div class="input-row">
+          <label>SOURCE (original folder)</label>
+          <input type="text" id="transferSourceInput" placeholder="pre-filled from scan" />
+        </div>
+        <div class="input-row">
+          <label>TARGET FOLDER</label>
+          <input type="text" id="transferTargetInput" placeholder="C:\Users\you\PhotosClean" />
+        </div>
+        <div class="modal-checkbox" style="margin-bottom:10px">
+          <input type="checkbox" id="transferOverwriteCheck" />
+          <label for="transferOverwriteCheck" style="font-family:var(--mono);font-size:11px;color:var(--muted)">Overwrite existing files</label>
+        </div>
+        <p style="font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+          Copies all remaining files to the target folder preserving the original sub-folder structure.
+        </p>
+        <button class="btn btn-primary" id="transferBtn" onclick="startTransfer()">Transfer Files</button>
+        <div class="scan-status" id="transferStatus" style="display:none"></div>
+        <div class="progress-bar-wrap" id="transferProgressWrap" style="display:none">
+          <div class="progress-msg" id="transferProgressMsg">Starting…</div>
+          <div class="progress-bar"><div class="progress-fill" id="transferProgressFill"></div></div>
+          <div class="progress-counter" id="transferProgressCounter"></div>
+        </div>
+      </div>
+
+      <!-- Scan cache stats -->
+      <div class="sidebar-section">
+        <h3>Scan Cache</h3>
+        <div id="cacheStats">
+          <div class="cache-stat-row">
+            <span class="cache-stat-key">Cached files</span>
+            <span class="cache-stat-val" id="cacheTotalFiles">—</span>
+          </div>
+          <div class="cache-stat-row">
+            <span class="cache-stat-key">With embeddings</span>
+            <span class="cache-stat-val" id="cacheWithEmb">—</span>
+          </div>
+          <div class="cache-stat-row">
+            <span class="cache-stat-key">With quality scores</span>
+            <span class="cache-stat-val" id="cacheWithQ">—</span>
+          </div>
+          <div class="cache-stat-row">
+            <span class="cache-stat-key">Cache DB size</span>
+            <span class="cache-stat-val" id="cacheDbSize">—</span>
+          </div>
+        </div>
+        <button class="btn btn-ghost" style="margin-top:8px;font-size:10px" onclick="evictCache()">Remove stale entries</button>
+      </div>
+
+      <!-- Saved Scans -->
+      <div class="sidebar-section">
+        <h3>Saved Scans</h3>
+        <div id="savedScansList" class="saved-scans-list">
+          <div class="saved-scan-empty">No saved scans</div>
+        </div>
+        <button class="btn btn-ghost" id="saveScanBtn" onclick="saveCurrentScan()" style="display:none">Save Current Scan</button>
+      </div>
+
+      <!-- Tier filters -->
+      <div class="sidebar-section">
+        <h3>Filter by type</h3>
+        <div class="tier-filters">
+          <div class="tier-btn active" onclick="filterTier(null, this)">
+            <span><span class="tier-dot" style="background:var(--muted);display:inline-block;vertical-align:middle;margin-right:6px"></span>All groups</span>
+            <span class="tier-count" id="countAll">0</span>
+          </div>
+          <div class="tier-btn" onclick="filterTier('exact', this)">
+            <span><span class="tier-dot" style="background:var(--red);display:inline-block;vertical-align:middle;margin-right:6px"></span>Exact</span>
+            <span class="tier-count" id="countExact">0</span>
+          </div>
+          <div class="tier-btn" onclick="filterTier('near', this)">
+            <span><span class="tier-dot" style="background:var(--amber);display:inline-block;vertical-align:middle;margin-right:6px"></span>Near duplicate</span>
+            <span class="tier-count" id="countNear">0</span>
+          </div>
+          <div class="tier-btn" onclick="filterTier('semantic', this)">
+            <span><span class="tier-dot" style="background:var(--accent);display:inline-block;vertical-align:middle;margin-right:6px"></span>Same scene</span>
+            <span class="tier-count" id="countSemantic">0</span>
+          </div>
+          <div class="tier-btn" onclick="filterTier('burst', this)">
+            <span><span class="tier-dot" style="background:var(--teal);display:inline-block;vertical-align:middle;margin-right:6px"></span>Burst</span>
+            <span class="tier-count" id="countBurst">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Auto decide -->
+      <div class="sidebar-section">
+        <h3>Auto Decide</h3>
+        <p style="font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+          Apply AI decision for groups where confidence ≥ 92%.
+        </p>
+        <button class="btn btn-ghost" onclick="autoDecide(false)" style="margin-bottom:6px">Dry Run (preview)</button>
+        <button class="btn btn-ghost" onclick="autoDecide(true)" style="color:var(--amber);border-color:rgba(247,185,85,0.3)">Apply All High-Confidence</button>
+      </div>
+
+      <!-- Memory stats -->
+      <div class="sidebar-section">
+        <h3>Learning Memory</h3>
+        <div class="memory-stats" id="memoryStats">
+          <div class="mem-row"><span class="mem-key">Total decisions</span><span class="mem-val" id="memTotal">—</span></div>
+          <div class="mem-row"><span class="mem-key">Accepted</span><span class="mem-val" id="memAccepted" style="color:var(--green)">—</span></div>
+          <div class="mem-row"><span class="mem-key">Overridden</span><span class="mem-val" id="memRejected" style="color:var(--amber)">—</span></div>
+          <div class="mem-row"><span class="mem-key">Files cleaned</span><span class="mem-val" id="memDeleted">—</span></div>
+        </div>
+      </div>
+      </div><!-- /sidebarPhotos -->
+
+      <!-- ═══ DOCUMENTS SIDEBAR ═══ -->
+      <div id="sidebarDocs" style="display:none">
+        <!-- Doc scan config -->
+        <div class="sidebar-section">
+          <h3>Scan Folder</h3>
+          <div class="input-row">
+            <label>SOURCE FOLDER</label>
+            <input type="text" id="docFolderInput" placeholder="C:\Users\you\Documents" />
+          </div>
+          <div class="input-row">
+            <label>DUPLICATES TARGET FOLDER</label>
+            <input type="text" id="docTargetInput" placeholder="leave blank = auto" />
+          </div>
+          <button class="btn btn-primary" id="docScanBtn" onclick="startDocScan()">Scan for Duplicates</button>
+          <div class="scan-status" id="docScanStatus">Ready to scan</div>
+          <div class="progress-bar-wrap" id="docProgressWrap" style="display:none">
+            <div class="progress-msg" id="docProgressMsg">Starting…</div>
+            <div class="progress-bar"><div class="progress-fill" id="docProgressFill"></div></div>
+            <div class="progress-counter" id="docProgressCounter">0 / 0 files</div>
+          </div>
+        </div>
+
+        <!-- Apply decisions -->
+        <div class="sidebar-section" id="docApplySection" style="display:none">
+          <h3>Apply Decisions</h3>
+          <p style="font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+            Automatically keeps the richest copy in each group and moves all duplicates to the target folder.
+          </p>
+          <button class="btn btn-ghost" onclick="showDocApplyModal(false)" style="margin-bottom:6px">Dry Run (preview)</button>
+          <button class="btn btn-ghost" onclick="showDocApplyModal(true)"
+                  style="color:var(--amber);border-color:rgba(247,185,85,0.3)">
+            ✓ Apply &amp; Move Duplicates
+          </button>
+        </div>
+
+        <!-- Doc stats -->
+        <div class="sidebar-section">
+          <h3>Document Scan</h3>
+          <div class="doc-stats-grid">
+            <div class="stat-card">
+              <div class="stat-num" id="docStatFiles">—</div>
+              <div class="stat-label">DOCUMENTS</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="docStatGroups">—</div>
+              <div class="stat-label">DUP GROUPS</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="docStatUndecided">—</div>
+              <div class="stat-label">UNDECIDED</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-num" id="docStatExact">—</div>
+              <div class="stat-label">EXACT DUPS</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Doc tier filters -->
+        <div class="sidebar-section">
+          <h3>Filter by type</h3>
+          <div class="tier-filters">
+            <div class="tier-btn active" onclick="filterDocTier(null, this)">
+              <span><span class="tier-dot" style="background:var(--muted);display:inline-block;vertical-align:middle;margin-right:6px"></span>All groups</span>
+              <span class="tier-count" id="docCountAll">0</span>
+            </div>
+            <div class="tier-btn" onclick="filterDocTier('exact', this)">
+              <span><span class="tier-dot" style="background:var(--red);display:inline-block;vertical-align:middle;margin-right:6px"></span>Exact copy</span>
+              <span class="tier-count" id="docCountExact">0</span>
+            </div>
+            <div class="tier-btn" onclick="filterDocTier('near', this)">
+              <span><span class="tier-dot" style="background:var(--amber);display:inline-block;vertical-align:middle;margin-right:6px"></span>Similar content</span>
+              <span class="tier-count" id="docCountNear">0</span>
+            </div>
+          </div>
+        </div>
+      </div><!-- /sidebarDocs -->
+
+    </div>
+  </aside>
+
+  <!-- ── Main panel ── -->
+  <main class="main">
+
+    <!-- Photos panel -->
+    <div id="mainPhotos">
+      <div class="groups-header">
+        <div>
+          <div class="groups-title" id="panelTitle">Ready to scan</div>
+          <div class="groups-subtitle" id="panelSub">Point to a folder and click Run Scan</div>
+        </div>
+        <div class="header-actions">
+          <button class="btn-sm btn-sm-ghost" onclick="toggleUndecidedOnly()">Undecided only</button>
+          <button class="btn-sm btn-sm-ghost" onclick="refreshGroups()">↺ Refresh</button>
+          <button class="btn-sm btn-sm-primary" id="applyDecisionsBtn" onclick="showApplyDecisionsModal()" style="display:none">✓ Apply Decisions</button>
+        </div>
+      </div>
+      <div id="groupsList" class="groups-list">
+        <div class="empty-state">
+          <div class="empty-icon">📷</div>
+          <div class="empty-title">No duplicates found yet</div>
+          <div class="empty-sub">Enter a folder path and click Run Scan</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Documents panel -->
+    <div id="mainDocs" style="display:none">
+      <div class="groups-header">
+        <div>
+          <div class="groups-title" id="docPanelTitle">Ready to scan</div>
+          <div class="groups-subtitle" id="docPanelSub">Enter a folder path and click Scan for Duplicates</div>
+        </div>
+        <div class="header-actions">
+          <button class="btn-sm btn-sm-ghost" onclick="toggleDocUndecidedOnly()">Undecided only</button>
+          <button class="btn-sm btn-sm-ghost" onclick="refreshDocGroups()">↺ Refresh</button>
+        </div>
+      </div>
+      <div id="docGroupsList" class="groups-list">
+        <div class="empty-state">
+          <div class="empty-icon">📄</div>
+          <div class="empty-title">No document duplicates found yet</div>
+          <div class="empty-sub">Enter a folder path and click Scan for Duplicates</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Apply Decisions Modal -->
+<div id="applyModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span>Apply Duplicate Removal Decisions</span>
+      <button class="modal-close" onclick="closeApplyModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-row">
+        <div class="modal-label">Target Folder</div>
+        <input type="text" class="modal-input" id="targetFolderInput" placeholder="(auto: source_cleaned)" />
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px;">Leave blank for auto location</div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-checkbox">
+          <input type="checkbox" id="dryRunCheck" />
+          <label for="dryRunCheck">Dry-run (preview only, no files modified)</label>
+        </div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:10px;color:var(--muted);">
+        <div><strong>This will:</strong></div>
+        <div style="margin-top:8px;">✓ Copy kept files to target folder (preserving structure)</div>
+        <div>✓ Delete marked duplicates from source</div>
+        <div>✓ Generate detailed report with statistics</div>
+      </div>
+      <div id="applyStatus" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:11px;color:var(--muted);"></div>
+      <div id="reportDisplay" style="display:none;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeApplyModal()">Cancel</button>
+      <button class="btn-apply" id="applyBtn" onclick="applyDecisions()">Apply Decisions</button>
+    </div>
+  </div>
+</div>
+
+<!-- Photo Move Duplicates Modal -->
+<div id="photoApplyModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span>Move Duplicate Photos</span>
+      <button class="modal-close" onclick="closePhotoApplyModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-row">
+        <div class="modal-label">Target Folder (duplicates go here)</div>
+        <input type="text" class="modal-input" id="photoApplyTargetInput"
+               placeholder="leave blank = source_folder_duplicates" />
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px;">
+          Duplicate photos are <strong>copied</strong> here, then <strong>deleted</strong> from the source. The best-quality copy stays in place.
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-checkbox">
+          <input type="checkbox" id="photoDryRunCheck" />
+          <label for="photoDryRunCheck">Dry-run (preview only — no files moved or deleted)</label>
+        </div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:10px;color:var(--muted);">
+        <div><strong>This will:</strong></div>
+        <div style="margin-top:8px;">✓ Auto-select best photo in each group (quality score → file size)</div>
+        <div>✓ Copy all duplicates to the target folder</div>
+        <div>✓ Delete those duplicates from the source folder</div>
+        <div>✓ Leave the best photo untouched in its original location</div>
+        <div style="margin-top:6px;color:var(--accent2);">ℹ Manually reviewed groups use your confirmed selection.</div>
+      </div>
+      <div id="photoApplyStatus" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:11px;color:var(--muted);"></div>
+      <div id="photoReportDisplay" style="display:none;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closePhotoApplyModal()">Cancel</button>
+      <button class="btn-apply" id="photoApplyConfirmBtn" onclick="applyPhotoDuplicates()">Move Duplicates</button>
+    </div>
+  </div>
+</div>
+
+<!-- Document Apply Decisions Modal -->
+<div id="docApplyModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <span>Move Duplicate Documents</span>
+      <button class="modal-close" onclick="closeDocApplyModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-row">
+        <div class="modal-label">Target Folder (duplicates go here)</div>
+        <input type="text" class="modal-input" id="docApplyTargetInput"
+               placeholder="leave blank = source_folder_duplicates" />
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px;">
+          Duplicate files are <strong>copied</strong> here, then <strong>deleted</strong> from the source.
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-checkbox">
+          <input type="checkbox" id="docDryRunCheck" />
+          <label for="docDryRunCheck">Dry-run (preview only — no files moved or deleted)</label>
+        </div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:10px;color:var(--muted);">
+        <div><strong>This will:</strong></div>
+        <div style="margin-top:8px;">✓ Auto-select the best copy to keep in each group (most words → pages → size)</div>
+        <div>✓ Copy all duplicate files to the target folder</div>
+        <div>✓ Delete those duplicates from the source folder</div>
+        <div>✓ Leave the "best" file untouched in its original location</div>
+        <div style="margin-top:6px;color:var(--accent2);">ℹ Manually confirmed groups use your selection instead of auto.</div>
+      </div>
+      <div id="docApplyStatus" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px;font-family:var(--mono);font-size:11px;color:var(--muted);"></div>
+      <div id="docReportDisplay" style="display:none;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeDocApplyModal()">Cancel</button>
+      <button class="btn-apply" id="docApplyBtn" onclick="applyDocDecisions()">Move Duplicates</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+const state = {
+  groups:        [],
+  activeTier:    null,
+  undecidedOnly: false,
+  expandedId:    null,
+  selectedIdx:   {},    // groupId → chosen image index
+  reasonTags:    {},    // groupId → Set of selected tags
+  allTags:       [],
+};
+
+// ── Socket ────────────────────────────────────────────────────────────────────
+const socket = io();
+socket.on('progress', ({message, percent, scanned, total}) => {
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('progressMsg').textContent = message;
+  document.getElementById('progressFill').style.width = percent + '%';
+  document.getElementById('progressCounter').textContent = scanned != null && total != null
+    ? `${scanned} / ${total} files`
+    : '';
+});
+socket.on('scan_complete', d => {
+  setScanStatus(false);
+  document.getElementById('progressFill').style.width = '100%';
+  setTimeout(() => document.getElementById('progressWrap').style.display = 'none', 1500);
+  document.getElementById('statImages').textContent  = d.total_images;
+  document.getElementById('statGroups').textContent  = d.total_groups;
+  document.getElementById('statTime').textContent    = d.scan_time.toFixed(1) + 's';
+  document.getElementById('saveScanBtn').style.display  = 'block';
+  document.getElementById('applyDecisionsBtn').style.display = 'block';
+  if (d.scan_id) {
+    state.currentScanId = d.scan_id;
+    document.getElementById('photoApplySection').style.display = '';
+    document.getElementById('transferSection').style.display   = '';
+  }
+  const folder = document.getElementById('folderInput').value.trim();
+  if (folder) document.getElementById('transferSourceInput').value = folder;
+  refreshGroups();
+  loadStats();
+  toast(`Scan complete — ${d.total_groups} groups found`, 'success');
+});
+socket.on('scan_error', d => {
+  setScanStatus(false);
+  document.getElementById('progressWrap').style.display = 'none';
+  document.getElementById('progressCounter').textContent = '';
+  toast('Scan error: ' + d.error, 'error');
+});
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function api(path, opts={}) {
+  const r = await fetch('/api' + path, {
+    headers: {'Content-Type': 'application/json'},
+    ...opts
+  });
+
+  const text = await r.text();
+  if (!r.ok) {
+    let error = text || `HTTP ${r.status}`;
+    try {
+      const data = JSON.parse(text);
+      if (data.error) error = data.error;
+    } catch (e) {
+      // ignore parse failure
+    }
+    return {error};
+  }
+
+  return JSON.parse(text);
+}
+
+function setScanStatus(running) {
+  const el = document.getElementById('scanStatus');
+  const btn = document.getElementById('scanBtn');
+
+  if (running) {
+    el.textContent = 'Scan in progress';
+    el.style.color = 'var(--accent2)';
+    btn.disabled = true;
+  } else {
+    el.textContent = 'Ready to scan';
+    el.style.color = 'var(--muted)';
+    btn.disabled = false;
+  }
+}
+
+async function startScan() {
+  const folder  = document.getElementById('folderInput').value.trim();
+  const output  = document.getElementById('outputInput').value.trim();
+  const rawExcl = document.getElementById('excludedDirsInput').value.trim();
+  const excluded_dirs = rawExcl ? rawExcl.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  if (!folder) { toast('Enter a folder path', 'error'); return; }
+  document.getElementById('scanBtn').disabled = true;
+  setScanStatus(true);
+  document.getElementById('progressCounter').textContent = '0 / 0 files';
+  document.getElementById('groupsList').innerHTML = `
+    <div class="empty-state"><div class="empty-icon" style="animation:spin 2s linear infinite">⚙️</div>
+    <div class="empty-title">Scanning…</div><div class="empty-sub">This may take a few minutes</div></div>`;
+  const r = await api('/scan', {method:'POST', body: JSON.stringify({folder, output, excluded_dirs})});
+  if (r.error) { toast(r.error, 'error'); setScanStatus(false); document.getElementById('scanBtn').disabled = false; }
+}
+
+async function refreshGroups() {
+  let url = '/groups?';
+  if (state.activeTier)    url += 'tier=' + state.activeTier + '&';
+  if (state.undecidedOnly) url += 'decided=false&';
+  const d = await api(url);
+  if (d.error) return;
+  state.groups = d.groups || [];
+  document.getElementById('statUndecided').textContent = d.undecided ?? '—';
+  updateCounts();
+  renderGroups();
+}
+
+async function loadStats() {
+  const d = await api('/stats');
+  document.getElementById('memTotal').textContent    = d.total_decisions    ?? 0;
+  document.getElementById('memAccepted').textContent = d.accepted            ?? 0;
+  document.getElementById('memRejected').textContent = d.rejected            ?? 0;
+  document.getElementById('memDeleted').textContent  = d.total_deleted       ?? 0;
+}
+
+async function loadTags() {
+  const d = await api('/reason_tags');
+  state.allTags = d.tags || [];
+}
+
+async function submitDecision(groupId) {
+  const grp    = state.groups.find(g => g.group_id === groupId);
+  const keptIdx = state.selectedIdx[groupId];
+  if (keptIdx === undefined || keptIdx === null) { toast('Select a photo to keep', 'error'); return; }
+  const tags  = [...(state.reasonTags[groupId] || new Set())];
+  const notes = document.getElementById('notes-' + groupId)?.value || '';
+
+  const r = await api('/decide', {method:'POST', body: JSON.stringify({
+    group_id: groupId, kept_idx: keptIdx, reason_tags: tags, human_notes: notes
+  })});
+  if (r.error) { toast(r.error, 'error'); return; }
+
+  toast(`Decision saved — ${r.llm_accepted ? '✓ matched AI' : '↺ override learned'}`, 'success');
+  document.getElementById('statUndecided').textContent = r.undecided_remaining;
+  await refreshGroups();
+  loadStats();
+}
+
+async function autoDecide(apply) {
+  const r = await api('/decide/auto', {method:'POST', body:JSON.stringify({dry_run:!apply})});
+  if (r.error) { toast(r.error,'error'); return; }
+  const verb = apply ? 'Applied' : 'Would apply';
+  toast(`${verb} ${r.applied} decisions, ${r.skipped} need review`, apply?'success':'');
+  if (apply) { await refreshGroups(); loadStats(); }
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function renderGroups() {
+  const el = document.getElementById('groupsList');
+  if (!state.groups.length) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">✨</div>
+      <div class="empty-title">${state.undecidedOnly ? 'All done!' : 'No groups'}</div>
+      <div class="empty-sub">${state.undecidedOnly ? 'Every group has been reviewed' : 'Run a scan to find duplicates'}</div>
+    </div>`;
+    return;
+  }
+
+  document.getElementById('panelTitle').textContent = `${state.groups.length} Duplicate Groups`;
+  document.getElementById('panelSub').textContent   = `Review each group and choose the best photo`;
+
+  el.innerHTML = state.groups.map(g => renderGroupCard(g)).join('');
+}
+
+function renderGroupCard(g) {
+  const isExpanded = state.expandedId === g.group_id;
+  const selectedIdx = state.selectedIdx[g.group_id] ?? g.best_guess_idx;
+
+  const tierClass = { exact:'tier-exact', near:'tier-near', semantic:'tier-semantic', burst:'tier-burst' }[g.tier] || '';
+  const tierLabel = { exact:'Exact', near:'Near dup', semantic:'Same scene', burst:'Burst' }[g.tier] || g.tier;
+
+  const thumbs = g.images.map((img, i) => `
+    <img class="thumb-mini ${i === g.best_guess_idx ? 'best' : ''}"
+         src="${img.thumbnail || '/image?path=' + encodeURIComponent(img.path)}"
+         alt="${img.filename}"
+         onclick="event.stopPropagation(); expandGroup('${g.group_id}')">
+  `).join('');
+
+  const simPct = Math.round(g.similarity * 100);
+
+  return `
+  <div class="group-card ${g.decided ? 'decided' : ''} ${isExpanded ? 'expanded' : ''}" id="card-${g.group_id}">
+    <div class="group-header" onclick="toggleExpand('${g.group_id}')">
+      <div class="group-tier-badge ${tierClass}">${tierLabel}</div>
+      <div class="group-info">
+        <div class="group-name">${g.image_count} photos · ${g.images[0]?.filename || ''}</div>
+        <div class="group-meta">sim ${simPct}% · ${g.rag_context_used || 0} memories used · ${g.llm_backend}</div>
+      </div>
+      <div class="group-right">
+        ${g.decided ? `<span class="decided-badge">✓ Done</span>` : `
+        <div>
+          <div class="similarity-bar"><div class="similarity-fill" style="width:${simPct}%"></div></div>
+          <div class="sim-label" style="text-align:center">${simPct}%</div>
+        </div>`}
+        <span class="chevron">▾</span>
+      </div>
+    </div>
+
+    ${!isExpanded ? `<div class="thumb-strip">${thumbs}</div>` : ''}
+
+    ${isExpanded ? renderReviewPanel(g, selectedIdx) : ''}
+  </div>`;
+}
+
+function renderReviewPanel(g, selectedIdx) {
+  const cols = Math.min(g.images.length, 3);
+  const photos = g.images.map((img, i) => {
+    const isSelected   = i === selectedIdx;
+    const isAI         = i === g.best_guess_idx;
+    const scoreColor   = img.quality_score > 0.7 ? 'var(--green)' : img.quality_score > 0.4 ? 'var(--amber)' : 'var(--red)';
+    const issues       = img.disqualifiers || [];
+    const scorePct     = Math.round((img.quality_score || 0) * 100);
+
+    return `
+    <div class="photo-slot ${isSelected?'selected':''} ${isAI&&!isSelected?'ai-pick':''} ${issues.length>0&&!isSelected?'disqualified':''}"
+         onclick="selectPhoto('${g.group_id}', ${i})">
+      <div class="photo-img-wrap">
+        <img class="photo-img"
+             src="${img.thumbnail || '/image?path=' + encodeURIComponent(img.path)}"
+             alt="${img.filename}">
+        <div class="photo-badges">
+          ${isSelected ? `<span class="badge badge-keep">KEEP</span>` : ''}
+          ${isAI && !isSelected ? `<span class="badge badge-ai">AI PICK</span>` : ''}
+          ${issues.map(t => `<span class="badge badge-issue">${t.replace(/_/g,' ')}</span>`).join('')}
+        </div>
+        <div class="quality-bar-row">
+          <div class="quality-bar-fill" style="width:${scorePct}%;background-position:${100-scorePct}% 0"></div>
+        </div>
+      </div>
+      <div class="photo-meta">
+        <div class="photo-filename" title="${img.filename}">${img.filename}</div>
+        <div class="photo-score-row">
+          <div class="photo-score" style="color:${scoreColor}">${scorePct}<span style="font-size:12px;color:var(--muted)">%</span></div>
+          <div class="photo-dims">${img.width}×${img.height}</div>
+        </div>
+        ${img.issue_tags?.length ? `<div class="issue-tags">${img.issue_tags.map(t=>`<span class="issue-tag">${t}</span>`).join('')}</div>` : ''}
+        ${img.llm_reason ? `<div class="llm-reason">"${img.llm_reason}"</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  const selectedTags = state.reasonTags[g.group_id] || new Set();
+  const tagBtns = state.allTags.map(tag => `
+    <button class="reason-tag-btn ${selectedTags.has(tag)?'selected':''}"
+            onclick="toggleTag('${g.group_id}','${tag}')">
+      ${tag.replace(/_/g,' ')}
+    </button>`).join('');
+
+  return `
+  <div class="review-panel">
+    <div class="photos-grid" style="grid-template-columns:repeat(${cols},1fr)">
+      ${photos}
+    </div>
+
+    <div class="decision-section">
+      <div class="decision-title">Decision</div>
+
+      ${g.llm_recommendation ? `
+      <div class="llm-rec-box">
+        <div class="llm-rec-icon">🤖</div>
+        <div>
+          <div class="llm-rec-text">${g.llm_recommendation}</div>
+          <div class="llm-confidence">Confidence: ${Math.round(g.llm_confidence*100)}% · ${g.rag_context_used} past decisions referenced</div>
+        </div>
+      </div>` : ''}
+
+      <div style="margin-bottom:8px;font-family:var(--mono);font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1.5px">Reason tags</div>
+      <div class="reason-tags-grid">${tagBtns}</div>
+
+      <div class="notes-row">
+        <textarea id="notes-${g.group_id}" placeholder="Optional notes (will be saved to memory for future learning)…"></textarea>
+      </div>
+
+      <div class="decision-actions">
+        <button class="btn-confirm" onclick="submitDecision('${g.group_id}')"
+                ${selectedIdx===undefined||selectedIdx===null?'disabled':''}>
+          Confirm — keep photo ${(selectedIdx??'?')+1}
+        </button>
+        <button class="btn-skip" onclick="toggleExpand('${g.group_id}')">Skip</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── Interaction ───────────────────────────────────────────────────────────────
+function toggleExpand(gid) {
+  state.expandedId = state.expandedId === gid ? null : gid;
+  renderGroups();
+}
+function expandGroup(gid) {
+  state.expandedId = gid;
+  renderGroups();
+  setTimeout(() => document.getElementById('card-'+gid)?.scrollIntoView({behavior:'smooth',block:'center'}), 50);
+}
+
+function selectPhoto(gid, idx) {
+  state.selectedIdx[gid] = idx;
+  // Re-render just this card
+  const g = state.groups.find(g => g.group_id === gid);
+  if (!g) return;
+  document.getElementById('card-'+gid).outerHTML = renderGroupCard(g);
+}
+
+function toggleTag(gid, tag) {
+  if (!state.reasonTags[gid]) state.reasonTags[gid] = new Set();
+  if (state.reasonTags[gid].has(tag)) state.reasonTags[gid].delete(tag);
+  else state.reasonTags[gid].add(tag);
+  const g = state.groups.find(g => g.group_id === gid);
+  if (g) document.getElementById('card-'+gid).outerHTML = renderGroupCard(g);
+}
+
+function filterTier(tier, el) {
+  state.activeTier = tier;
+  document.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  refreshGroups();
+}
+
+function toggleUndecidedOnly() {
+  state.undecidedOnly = !state.undecidedOnly;
+  refreshGroups();
+}
+
+function updateCounts() {
+  const all      = state.groups;
+  document.getElementById('countAll').textContent      = all.length;
+  document.getElementById('countExact').textContent    = all.filter(g=>g.tier==='exact').length;
+  document.getElementById('countNear').textContent     = all.filter(g=>g.tier==='near').length;
+  document.getElementById('countSemantic').textContent = all.filter(g=>g.tier==='semantic').length;
+  document.getElementById('countBurst').textContent    = all.filter(g=>g.tier==='burst').length;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let _toastTimer;
+function toast(msg, type='') {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  clearTimeout(_toastTimer);
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  _toastTimer = setTimeout(() => el.remove(), 4000);
+}
+
+// ── Saved Scans ───────────────────────────────────────────────────────────────
+async function loadSavedScans() {
+  const d = await api('/scans');
+  if (d.error) return;
+
+  const listEl = document.getElementById('savedScansList');
+  if (!d.scans || d.scans.length === 0) {
+    listEl.innerHTML = '<div class="saved-scan-empty">No saved scans</div>';
+    return;
+  }
+
+  listEl.innerHTML = d.scans.map(scan => `
+    <div class="saved-scan-item">
+      <div class="saved-scan-name">${scan.folder.split(/[/\\]/).pop()}</div>
+      <div class="saved-scan-meta">${scan.total_images} images · ${scan.total_groups} groups · ${new Date(scan.timestamp).toLocaleString()}</div>
+      <div class="saved-scan-actions">
+        <button class="saved-scan-load" onclick="loadScan('${scan.scan_id}')">Load</button>
+        <button class="saved-scan-load" style="background:var(--amber)"
+                onclick="showPhotoApplyModalForScan('${scan.scan_id}')">Apply</button>
+        <button class="saved-scan-delete" onclick="deleteScan('${scan.scan_id}')">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function saveCurrentScan() {
+  const r = await api('/scans/save', {method: 'POST'});
+  if (r.error) {
+    toast(r.error, 'error');
+    return;
+  }
+  toast(`Scan saved as "${r.scan_id}"`, 'success');
+  await loadSavedScans();
+}
+
+async function loadScan(scanId) {
+  if (confirm('Loading a saved scan will replace the current results. Continue?')) {
+    const r = await api(`/scans/${scanId}`, {method: 'POST'});
+    if (r.error) {
+      toast(r.error, 'error');
+      return;
+    }
+    toast(`Scan loaded: ${r.total_groups} groups`, 'success');
+    document.getElementById('folderInput').value = r.folder;
+    document.getElementById('statImages').textContent = r.total_images;
+    document.getElementById('statGroups').textContent = r.total_groups;
+    document.getElementById('statTime').textContent = r.scan_time.toFixed(1) + 's';
+    document.getElementById('saveScanBtn').style.display = 'block';
+    document.getElementById('applyDecisionsBtn').style.display = 'block';
+    // Store scan_id for later use
+    state.currentScanId = r.scan_id;
+    await refreshGroups();
+    await loadStats();
+  }
+}
+
+async function deleteScan(scanId) {
+  if (confirm('Delete this saved scan?')) {
+    const r = await api(`/scans/${scanId}`, {method: 'DELETE'});
+    if (r.error) {
+      toast(r.error, 'error');
+      return;
+    }
+    toast('Scan deleted', 'success');
+    await loadSavedScans();
+  }
+}
+
+// ── Photo Move Duplicates Modal ───────────────────────────────────────────────
+let _photoApplyTargetScanId = null;
+
+function showPhotoApplyModal(apply) {
+  const sidebarTarget = document.getElementById('photoTargetInput').value.trim();
+  document.getElementById('photoApplyTargetInput').value = sidebarTarget;
+  document.getElementById('photoDryRunCheck').checked    = !apply;
+  _photoApplyTargetScanId = null;   // use current scan
+  document.getElementById('photoApplyModal').classList.add('active');
+  document.getElementById('photoReportDisplay').style.display  = 'none';
+  document.getElementById('photoApplyStatus').style.display    = 'none';
+  document.getElementById('photoApplyConfirmBtn').style.display = 'block';
+  document.getElementById('photoApplyConfirmBtn').disabled      = false;
+}
+
+function showPhotoApplyModalForScan(scanId) {
+  document.getElementById('photoApplyTargetInput').value = '';
+  document.getElementById('photoDryRunCheck').checked    = false;
+  _photoApplyTargetScanId = scanId;
+  document.getElementById('photoApplyModal').classList.add('active');
+  document.getElementById('photoReportDisplay').style.display  = 'none';
+  document.getElementById('photoApplyStatus').style.display    = 'none';
+  document.getElementById('photoApplyConfirmBtn').style.display = 'block';
+  document.getElementById('photoApplyConfirmBtn').disabled      = false;
+}
+
+function closePhotoApplyModal() {
+  document.getElementById('photoApplyModal').classList.remove('active');
+  document.getElementById('photoReportDisplay').innerHTML = '';
+  document.getElementById('photoApplyStatus').innerHTML   = '';
+  document.getElementById('photoApplyTargetInput').value  = '';
+  document.getElementById('photoDryRunCheck').checked     = false;
+  _photoApplyTargetScanId = null;
+}
+
+async function applyPhotoDuplicates() {
+  const targetFolder = document.getElementById('photoApplyTargetInput').value.trim();
+  const dryRun       = document.getElementById('photoDryRunCheck').checked;
+
+  document.getElementById('photoApplyConfirmBtn').disabled         = true;
+  document.getElementById('photoApplyStatus').style.display        = 'block';
+  document.getElementById('photoApplyStatus').innerHTML            = '<div style="animation:spin 1s linear infinite;display:inline-block">⚙️</div> Processing…';
+  document.getElementById('photoReportDisplay').style.display      = 'none';
+
+  try {
+    const r = await api('/apply_photo_decisions', {
+      method: 'POST',
+      body: JSON.stringify({
+        scan_id:       _photoApplyTargetScanId || state.currentScanId || null,
+        target_folder: targetFolder || null,
+        dry_run:       dryRun,
+      }),
+    });
+
+    if (r.error) {
+      document.getElementById('photoApplyStatus').innerHTML = `<strong style="color:var(--red)">Error:</strong> ${r.error}`;
+      toast(r.error, 'error');
+      document.getElementById('photoApplyConfirmBtn').disabled = false;
+      return;
+    }
+
+    displayPhotoReport(r.report, dryRun);
+    document.getElementById('photoApplyConfirmBtn').style.display = 'none';
+    toast(r.message, 'success');
+  } catch (e) {
+    document.getElementById('photoApplyStatus').innerHTML = `<strong style="color:var(--red)">Error:</strong> ${e.message}`;
+    toast('Error: ' + e.message, 'error');
+    document.getElementById('photoApplyConfirmBtn').disabled = false;
+  }
+}
+
+function displayPhotoReport(report, dryRun) {
+  const html = `
+    <div style="margin-top:4px;">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px;font-weight:600;text-transform:uppercase;">
+        ${dryRun ? '📋 DRY-RUN PREVIEW' : '✓ OPERATION COMPLETED'}
+      </div>
+      <div class="report-stats">
+        <div class="report-stat">
+          <div class="report-stat-value">${report.files_moved}</div>
+          <div class="report-stat-label">${dryRun ? 'Would Move' : 'Files Moved'}</div>
+        </div>
+        <div class="report-stat">
+          <div class="report-stat-value">${report.total_groups}</div>
+          <div class="report-stat-label">Groups Processed</div>
+        </div>
+        <div class="report-stat">
+          <div class="report-stat-value" style="color:var(--accent2)">${report.auto_decided}</div>
+          <div class="report-stat-label">Auto-Selected</div>
+        </div>
+        <div class="report-stat">
+          <div class="report-stat-value" style="color:${report.errors > 0 ? 'var(--red)' : 'var(--green)'}">${report.errors}</div>
+          <div class="report-stat-label">Errors</div>
+        </div>
+      </div>
+      ${report.moved_files && report.moved_files.length > 0 ? `
+      <div style="margin-top:16px;">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">
+          ${dryRun ? 'Would Move' : 'Moved'} (${report.moved_files.length})
+        </div>
+        <div class="report-files">
+          ${report.moved_files.slice(0, 50).map(f => `
+            <div class="report-file-item">
+              <span style="color:var(--red)">✗</span> ${f.from.split(/[/\\]/).pop()}
+              <span style="color:var(--dim)"> → kept: ${f.kept}</span>
+            </div>`).join('')}
+          ${report.moved_files.length > 50 ? `<div class="report-file-item"><em>… and ${report.moved_files.length - 50} more</em></div>` : ''}
+        </div>
+      </div>` : ''}
+      ${report.error_details && report.error_details.length > 0 ? `
+      <div style="margin-top:12px;color:var(--red);font-family:var(--mono);font-size:10px;">
+        ⚠️ ${report.error_details.length} error(s):
+        ${report.error_details.slice(0,5).map(e=>`<div style="margin-top:4px;color:var(--muted)">${e.file}: ${e.error}</div>`).join('')}
+      </div>` : ''}
+      <div style="margin-top:16px;font-family:var(--mono);font-size:10px;color:var(--muted);">
+        <div><strong>Target Folder:</strong> ${report.target_folder}</div>
+        <div><strong>Timestamp:</strong> ${new Date(report.timestamp).toLocaleString()}</div>
+      </div>
+    </div>`;
+  document.getElementById('photoReportDisplay').innerHTML    = html;
+  document.getElementById('photoReportDisplay').style.display = 'block';
+  document.getElementById('photoApplyStatus').style.display   = 'none';
+}
+
+// ── Apply Decisions (legacy modal — kept for compatibility) ───────────────────
+function showApplyDecisionsModal() {
+  document.getElementById('applyModal').classList.add('active');
+  document.getElementById('reportDisplay').style.display = 'none';
+  document.getElementById('applyStatus').style.display   = 'none';
+  document.getElementById('applyBtn').style.display      = 'block';
+}
+
+function closeApplyModal() {
+  document.getElementById('applyModal').classList.remove('active');
+  document.getElementById('reportDisplay').innerHTML = '';
+  document.getElementById('applyStatus').innerHTML   = '';
+  document.getElementById('targetFolderInput').value = '';
+  document.getElementById('dryRunCheck').checked     = false;
+}
+
+async function applyDecisions() {
+  const scanId = state.currentScanId;
+  if (!scanId) {
+    toast('No saved scan ID found — load a scan first or run a new one', 'error');
+    return;
+  }
+  const targetFolder = document.getElementById('targetFolderInput').value.trim();
+  const dryRun       = document.getElementById('dryRunCheck').checked;
+
+  document.getElementById('applyBtn').disabled = true;
+  document.getElementById('applyStatus').style.display = 'block';
+  document.getElementById('applyStatus').innerHTML = '<div style="animation:spin 1s linear infinite;display:inline-block">⚙️</div> Processing…';
+
+  try {
+    const r = await api('/apply_decisions', {
+      method: 'POST',
+      body: JSON.stringify({scan_id: scanId, target_folder: targetFolder || null, dry_run: dryRun}),
+    });
+    if (r.error) {
+      toast(r.error, 'error');
+      document.getElementById('applyStatus').innerHTML = `<strong style="color:var(--red)">Error:</strong> ${r.error}`;
+      return;
+    }
+    displayDecisionReport(r.report, dryRun);
+    document.getElementById('applyBtn').style.display = 'none';
+    toast(r.message, 'success');
+  } catch (e) {
+    toast('Error: ' + e.message, 'error');
+    document.getElementById('applyStatus').innerHTML = `<strong style="color:var(--red)">Error:</strong> ${e.message}`;
+  } finally {
+    document.getElementById('applyBtn').disabled = false;
+  }
+}
+
+function displayDecisionReport(report, dryRun) {
+  const stats = report.stats;
+  const html = `
+    <div style="margin-top:16px;">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px;font-weight:600;text-transform:uppercase;">
+        ${dryRun ? '📋 DRY-RUN PREVIEW' : '✓ OPERATION COMPLETED'}
+      </div>
+      <div class="report-stats">
+        <div class="report-stat">
+          <div class="report-stat-value">${stats.total_scanned}</div>
+          <div class="report-stat-label">Images Scanned</div>
+        </div>
+        <div class="report-stat">
+          <div class="report-stat-value">${stats.deleted_count}</div>
+          <div class="report-stat-label">Deleted (Duplicates)</div>
+        </div>
+        <div class="report-stat">
+          <div class="report-stat-value">${stats.transferred_count}</div>
+          <div class="report-stat-label">Transferred</div>
+        </div>
+        <div class="report-stat">
+          <div class="report-stat-value">${stats.remaining_count}</div>
+          <div class="report-stat-label">Remaining</div>
+        </div>
+      </div>
+      
+      ${report.stats.deleted_count > 0 ? `
+      <div style="margin-top:16px;">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Deleted Files (${report.stats.deleted_count})</div>
+        <div class="report-files">
+          ${report.deleted_files.slice(0, 50).map(f => `<div class="report-file-item">${f}</div>`).join('')}
+          ${report.deleted_files.length > 50 ? `<div class="report-file-item"><em>... and ${report.deleted_files.length - 50} more</em></div>` : ''}
+        </div>
+      </div>
+      ` : ''}
+      
+      ${report.stats.error_count > 0 ? `
+      <div style="margin-top:12px;color:var(--red);font-family:var(--mono);font-size:10px;">
+        ⚠️ ${report.stats.error_count} errors occurred. See report for details.
+      </div>
+      ` : ''}
+      
+      <div style="margin-top:16px;font-family:var(--mono);font-size:10px;color:var(--muted);">
+        <div><strong>Target Folder:</strong> ${report.target_folder}</div>
+        <div><strong>Timestamp:</strong> ${new Date(report.timestamp).toLocaleString()}</div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('reportDisplay').innerHTML = html;
+  document.getElementById('reportDisplay').style.display = 'block';
+  document.getElementById('applyStatus').style.display = 'none';
+}
+
+// ── Transfer files ────────────────────────────────────────────────────────────
+socket.on('transfer_progress', ({message, percent, copied, total}) => {
+  document.getElementById('transferProgressWrap').style.display = 'block';
+  document.getElementById('transferProgressMsg').textContent    = message;
+  document.getElementById('transferProgressFill').style.width   = percent + '%';
+  document.getElementById('transferProgressCounter').textContent = `${copied} / ${total} files`;
+});
+socket.on('transfer_complete', d => {
+  document.getElementById('transferBtn').disabled = false;
+  document.getElementById('transferStatus').style.display = 'none';
+  document.getElementById('transferProgressFill').style.width = '100%';
+  setTimeout(() => document.getElementById('transferProgressWrap').style.display = 'none', 2000);
+  toast(`Transfer complete — ${d.copied} files copied, ${d.skipped} skipped, ${d.errors} errors`, d.errors > 0 ? 'error' : 'success');
+  loadCacheStats();
+});
+
+async function startTransfer() {
+  const source    = document.getElementById('transferSourceInput').value.trim();
+  const target    = document.getElementById('transferTargetInput').value.trim();
+  const overwrite = document.getElementById('transferOverwriteCheck').checked;
+  if (!target) { toast('Enter a target folder path', 'error'); return; }
+
+  document.getElementById('transferBtn').disabled = true;
+  document.getElementById('transferStatus').style.display  = 'block';
+  document.getElementById('transferStatus').textContent    = 'Transfer starting…';
+  document.getElementById('transferStatus').style.color    = 'var(--accent2)';
+  document.getElementById('transferProgressWrap').style.display = 'block';
+  document.getElementById('transferProgressFill').style.width   = '0%';
+  document.getElementById('transferProgressCounter').textContent = '0 / ? files';
+
+  const r = await api('/transfer_files', {
+    method: 'POST',
+    body: JSON.stringify({source_folder: source || null, target_folder: target, overwrite}),
+  });
+  if (r.error) {
+    toast(r.error, 'error');
+    document.getElementById('transferBtn').disabled = false;
+    document.getElementById('transferStatus').style.display = 'none';
+  }
+}
+
+// ── Scan cache stats ──────────────────────────────────────────────────────────
+async function loadCacheStats() {
+  const d = await api('/cache_stats');
+  if (d.error) return;
+  document.getElementById('cacheTotalFiles').textContent = d.cached_files?.toLocaleString() ?? '—';
+  document.getElementById('cacheWithEmb').textContent    = d.with_embeddings?.toLocaleString() ?? '—';
+  document.getElementById('cacheWithQ').textContent      = d.with_quality?.toLocaleString() ?? '—';
+  document.getElementById('cacheDbSize').textContent     = d.db_size_mb != null ? d.db_size_mb + ' MB' : '—';
+}
+
+async function evictCache() {
+  const r = await api('/cache_evict', {method: 'POST'});
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast(`Removed ${r.removed} stale cache entries`, 'success');
+  loadCacheStats();
+}
+
+// ── Document Apply Decisions Modal ───────────────────────────────────────────
+function showDocApplyModal(apply) {
+  // Pre-fill target from sidebar input
+  const sidebarTarget = document.getElementById('docTargetInput').value.trim();
+  document.getElementById('docApplyTargetInput').value = sidebarTarget;
+  document.getElementById('docDryRunCheck').checked    = !apply;
+  document.getElementById('docApplyModal').classList.add('active');
+  document.getElementById('docReportDisplay').style.display = 'none';
+  document.getElementById('docApplyStatus').style.display   = 'none';
+  document.getElementById('docApplyBtn').style.display      = 'block';
+  document.getElementById('docApplyBtn').disabled           = false;
+}
+
+function closeDocApplyModal() {
+  document.getElementById('docApplyModal').classList.remove('active');
+  document.getElementById('docReportDisplay').innerHTML = '';
+  document.getElementById('docApplyStatus').innerHTML   = '';
+  document.getElementById('docApplyTargetInput').value  = '';
+  document.getElementById('docDryRunCheck').checked     = false;
+}
+
+async function applyDocDecisions() {
+  const targetFolder = document.getElementById('docApplyTargetInput').value.trim();
+  const dryRun       = document.getElementById('docDryRunCheck').checked;
+
+  document.getElementById('docApplyBtn').disabled            = true;
+  document.getElementById('docApplyStatus').style.display    = 'block';
+  document.getElementById('docApplyStatus').innerHTML        = '<div style="animation:spin 1s linear infinite;display:inline-block">⚙️</div> Processing…';
+  document.getElementById('docReportDisplay').style.display  = 'none';
+
+  try {
+    const r = await api('/apply_doc_decisions', {
+      method: 'POST',
+      body: JSON.stringify({target_folder: targetFolder || null, dry_run: dryRun}),
+    });
+
+    if (r.error) {
+      document.getElementById('docApplyStatus').innerHTML = `<strong style="color:var(--red)">Error:</strong> ${r.error}`;
+      toast(r.error, 'error');
+      document.getElementById('docApplyBtn').disabled = false;
+      return;
+    }
+
+    displayDocReport(r.report, dryRun);
+    document.getElementById('docApplyBtn').style.display = 'none';
+    toast(r.message, 'success');
+  } catch (e) {
+    document.getElementById('docApplyStatus').innerHTML = `<strong style="color:var(--red)">Error:</strong> ${e.message}`;
+    toast('Error: ' + e.message, 'error');
+    document.getElementById('docApplyBtn').disabled = false;
+  }
+}
+
+function displayDocReport(report, dryRun) {
+  const html = `
+    <div style="margin-top:4px;">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px;font-weight:600;text-transform:uppercase;">
+        ${dryRun ? '📋 DRY-RUN PREVIEW' : '✓ OPERATION COMPLETED'}
+      </div>
+      <div class="report-stats">
+        <div class="report-stat">
+          <div class="report-stat-value">${report.files_moved}</div>
+          <div class="report-stat-label">${dryRun ? 'Would Move' : 'Files Moved'}</div>
+        </div>
+        <div class="report-stat">
+          <div class="report-stat-value">${report.total_groups}</div>
+          <div class="report-stat-label">Groups Processed</div>
+        </div>
+        <div class="report-stat">
+          <div class="report-stat-value" style="color:var(--accent2)">${report.auto_decided}</div>
+          <div class="report-stat-label">Auto-Selected</div>
+        </div>
+        <div class="report-stat">
+          <div class="report-stat-value" style="color:${report.errors > 0 ? 'var(--red)' : 'var(--green)'}">${report.errors}</div>
+          <div class="report-stat-label">Errors</div>
+        </div>
+      </div>
+
+      ${report.moved_files && report.moved_files.length > 0 ? `
+      <div style="margin-top:16px;">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">
+          ${dryRun ? 'Would Move' : 'Moved'} (${report.moved_files.length})
+        </div>
+        <div class="report-files">
+          ${report.moved_files.slice(0, 50).map(f => `
+            <div class="report-file-item">
+              <span style="color:var(--red)">✗</span> ${f.from.split(/[/\\]/).pop()}
+              <span style="color:var(--dim)"> → ${f.to.split(/[/\\]/).slice(-2).join('/')}</span>
+            </div>`).join('')}
+          ${report.moved_files.length > 50 ? `<div class="report-file-item"><em>… and ${report.moved_files.length - 50} more</em></div>` : ''}
+        </div>
+      </div>` : ''}
+
+      ${report.error_details && report.error_details.length > 0 ? `
+      <div style="margin-top:12px;color:var(--red);font-family:var(--mono);font-size:10px;">
+        ⚠️ ${report.error_details.length} error(s):
+        ${report.error_details.slice(0, 5).map(e => `<div style="margin-top:4px;color:var(--muted)">${e.file}: ${e.error}</div>`).join('')}
+      </div>` : ''}
+
+      <div style="margin-top:16px;font-family:var(--mono);font-size:10px;color:var(--muted);">
+        <div><strong>Target Folder:</strong> ${report.target_folder}</div>
+        <div><strong>Timestamp:</strong> ${new Date(report.timestamp).toLocaleString()}</div>
+      </div>
+    </div>`;
+
+  document.getElementById('docReportDisplay').innerHTML   = html;
+  document.getElementById('docReportDisplay').style.display = 'block';
+  document.getElementById('docApplyStatus').style.display  = 'none';
+}
+
+// ── Mode switching ─────────────────────────────────────────────────────────────
+let currentMode = 'photos';
+
+function switchMode(mode) {
+  currentMode = mode;
+  document.getElementById('tabPhotos').classList.toggle('active', mode === 'photos');
+  document.getElementById('tabDocs').classList.toggle('active',   mode === 'docs');
+  document.getElementById('sidebarPhotos').style.display = mode === 'photos' ? '' : 'none';
+  document.getElementById('sidebarDocs').style.display   = mode === 'docs'   ? '' : 'none';
+  document.getElementById('mainPhotos').style.display    = mode === 'photos' ? '' : 'none';
+  document.getElementById('mainDocs').style.display      = mode === 'docs'   ? '' : 'none';
+
+  if (mode === 'docs') refreshDocGroups();
+}
+
+// ── Document state ────────────────────────────────────────────────────────────
+const docState = {
+  groups:        [],
+  activeTier:    null,
+  undecidedOnly: false,
+  expandedId:    null,
+  selectedIdx:   {},   // groupId → chosen doc index
+};
+
+// ── Doc SocketIO events ────────────────────────────────────────────────────────
+socket.on('doc_progress', ({message, percent, scanned, total}) => {
+  document.getElementById('docProgressWrap').style.display = 'block';
+  document.getElementById('docProgressMsg').textContent    = message;
+  document.getElementById('docProgressFill').style.width   = percent + '%';
+  document.getElementById('docProgressCounter').textContent = scanned != null && total != null
+    ? `${scanned} / ${total} files` : '';
+});
+socket.on('doc_scan_complete', d => {
+  setDocScanStatus(false);
+  document.getElementById('docProgressFill').style.width = '100%';
+  setTimeout(() => document.getElementById('docProgressWrap').style.display = 'none', 1500);
+  document.getElementById('docStatFiles').textContent  = d.total_docs;
+  document.getElementById('docStatGroups').textContent = d.total_groups;
+  document.getElementById('docApplySection').style.display = d.total_groups > 0 ? '' : 'none';
+  refreshDocGroups();
+  toast(`Document scan complete — ${d.total_groups} duplicate groups found`, 'success');
+});
+socket.on('doc_scan_error', d => {
+  setDocScanStatus(false);
+  document.getElementById('docProgressWrap').style.display = 'none';
+  toast('Document scan error: ' + d.error, 'error');
+});
+
+// ── Doc API helpers ────────────────────────────────────────────────────────────
+function setDocScanStatus(running) {
+  const el  = document.getElementById('docScanStatus');
+  const btn = document.getElementById('docScanBtn');
+  if (running) {
+    el.textContent  = 'Scan in progress';
+    el.style.color  = 'var(--accent2)';
+    btn.disabled    = true;
+  } else {
+    el.textContent  = 'Ready to scan';
+    el.style.color  = 'var(--muted)';
+    btn.disabled    = false;
+  }
+}
+
+async function startDocScan() {
+  const folder = document.getElementById('docFolderInput').value.trim();
+  if (!folder) { toast('Enter a folder path', 'error'); return; }
+  setDocScanStatus(true);
+  document.getElementById('docProgressCounter').textContent = '0 / 0 files';
+  document.getElementById('docGroupsList').innerHTML = `
+    <div class="empty-state">
+      <div class="empty-icon" style="animation:spin 2s linear infinite">⚙️</div>
+      <div class="empty-title">Scanning…</div>
+      <div class="empty-sub">Extracting text and checking for duplicates</div>
+    </div>`;
+  const r = await api('/scan_docs', {method: 'POST', body: JSON.stringify({folder})});
+  if (r.error) { toast(r.error, 'error'); setDocScanStatus(false); }
+}
+
+async function refreshDocGroups() {
+  let url = '/doc_groups?';
+  if (docState.activeTier)    url += 'tier=' + docState.activeTier + '&';
+  if (docState.undecidedOnly) url += 'decided=false&';
+  const d = await api(url);
+  if (d.error) return;
+  docState.groups = d.groups || [];
+  document.getElementById('docStatUndecided').textContent = d.undecided ?? '—';
+  updateDocCounts();
+  renderDocGroups();
+}
+
+// ── Doc rendering ──────────────────────────────────────────────────────────────
+function renderDocGroups() {
+  const el = document.getElementById('docGroupsList');
+  if (!docState.groups.length) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">✨</div>
+      <div class="empty-title">${docState.undecidedOnly ? 'All done!' : 'No document groups'}</div>
+      <div class="empty-sub">${docState.undecidedOnly ? 'Every group has been reviewed' : 'Run a scan to find duplicate documents'}</div>
+    </div>`;
+    return;
+  }
+  document.getElementById('docPanelTitle').textContent = `${docState.groups.length} Document Duplicate Groups`;
+  document.getElementById('docPanelSub').textContent   = 'Select the file to keep in each group';
+  el.innerHTML = docState.groups.map(g => renderDocCard(g)).join('');
+}
+
+function docTypeIcon(docType) {
+  if (docType === 'pdf')  return '📕';
+  if (docType === 'docx') return '📘';
+  if (docType === 'doc')  return '📗';
+  return '📄';
+}
+
+function fmtBytes(b) {
+  if (b >= 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + ' MB';
+  if (b >= 1024)         return (b / 1024).toFixed(1) + ' KB';
+  return b + ' B';
+}
+
+function renderDocCard(g) {
+  const isExpanded = docState.expandedId === g.group_id;
+  const tierLabel  = g.tier === 'exact' ? 'Exact copy' : 'Similar content';
+  const tierClass  = g.tier === 'exact' ? 'tier-exact' : 'tier-near';
+  const simPct     = Math.round(g.similarity * 100);
+  const firstName  = g.docs[0]?.filename || '';
+  const icon       = docTypeIcon(g.docs[0]?.doc_type);
+
+  return `
+  <div class="doc-card ${g.decided ? 'decided' : ''} ${isExpanded ? 'expanded' : ''}" id="dcard-${g.group_id}">
+    <div class="doc-header" onclick="toggleDocExpand('${g.group_id}')">
+      <div class="doc-type-icon">${icon}</div>
+      <div class="doc-info">
+        <div class="doc-name">${g.doc_count} files · ${firstName}</div>
+        <div class="doc-meta">
+          <span class="group-tier-badge ${tierClass}" style="margin-right:6px">${tierLabel}</span>
+          Similarity: ${simPct}%
+        </div>
+      </div>
+      <div class="group-right">
+        ${g.decided ? `<span class="decided-badge">✓ Done</span>` : `
+        <div>
+          <div class="similarity-bar"><div class="similarity-fill" style="width:${simPct}%"></div></div>
+          <div class="sim-label" style="text-align:center">${simPct}%</div>
+        </div>`}
+        <span class="chevron">▾</span>
+      </div>
+    </div>
+
+    ${isExpanded ? renderDocReviewPanel(g) : ''}
+  </div>`;
+}
+
+function renderDocReviewPanel(g) {
+  const selectedIdx = docState.selectedIdx[g.group_id] ?? null;
+
+  const rows = g.docs.map((doc, i) => {
+    const isSelected = i === selectedIdx;
+    const metaParts  = [];
+    if (doc.page_count > 0) metaParts.push(`${doc.page_count} pages`);
+    if (doc.word_count > 0) metaParts.push(`${doc.word_count.toLocaleString()} words`);
+    metaParts.push(fmtBytes(doc.size_bytes));
+    if (doc.title)  metaParts.push(`Title: ${doc.title}`);
+    if (doc.author) metaParts.push(`Author: ${doc.author}`);
+    if (doc.modified_at) metaParts.push(`Modified: ${new Date(doc.modified_at).toLocaleDateString()}`);
+
+    return `
+    <div class="doc-file-row ${isSelected ? 'selected' : ''}" onclick="selectDoc('${g.group_id}', ${i})">
+      <div class="doc-file-icon">${docTypeIcon(doc.doc_type)}</div>
+      <div class="doc-file-info">
+        <div class="doc-file-name" title="${doc.path}">${doc.filename}</div>
+        <div class="doc-file-meta">${metaParts.join(' · ')}</div>
+        <div class="doc-file-meta" style="color:var(--dim);font-size:9px">${doc.path}</div>
+      </div>
+      ${isSelected ? `<span class="doc-file-badge doc-keep-badge">KEEP</span>` : ''}
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="doc-review-panel">
+    <div class="doc-files-grid">${rows}</div>
+    <div class="doc-decision-section">
+      <div class="decision-title">Decision</div>
+      <div style="font-family:var(--body);font-size:12px;color:var(--muted);margin-bottom:12px">
+        Click a file above to select the one to <strong style="color:var(--green)">keep</strong>. The others will be marked as duplicates.
+      </div>
+      <div class="decision-actions">
+        <button class="btn-confirm"
+                onclick="submitDocDecision('${g.group_id}')"
+                ${selectedIdx === null ? 'disabled' : ''}>
+          Confirm — keep file ${selectedIdx !== null ? selectedIdx + 1 : '?'}
+        </button>
+        <button class="btn-skip" onclick="toggleDocExpand('${g.group_id}')">Skip</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── Doc interaction ────────────────────────────────────────────────────────────
+function toggleDocExpand(gid) {
+  docState.expandedId = docState.expandedId === gid ? null : gid;
+  renderDocGroups();
+}
+
+function selectDoc(gid, idx) {
+  docState.selectedIdx[gid] = idx;
+  const g = docState.groups.find(g => g.group_id === gid);
+  if (!g) return;
+  document.getElementById('dcard-' + gid).outerHTML = renderDocCard(g);
+}
+
+async function submitDocDecision(groupId) {
+  const keptIdx = docState.selectedIdx[groupId];
+  if (keptIdx === undefined || keptIdx === null) {
+    toast('Select a file to keep', 'error');
+    return;
+  }
+  const r = await api('/doc_decide', {method: 'POST', body: JSON.stringify({
+    group_id: groupId,
+    kept_idx: keptIdx,
+  })});
+  if (r.error) { toast(r.error, 'error'); return; }
+  toast(`Decision saved — file ${keptIdx + 1} marked as keeper`, 'success');
+  document.getElementById('docStatUndecided').textContent = r.undecided_remaining;
+  await refreshDocGroups();
+}
+
+function toggleDocUndecidedOnly() {
+  docState.undecidedOnly = !docState.undecidedOnly;
+  refreshDocGroups();
+}
+
+function filterDocTier(tier, el) {
+  docState.activeTier = tier;
+  document.querySelectorAll('#sidebarDocs .tier-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  refreshDocGroups();
+}
+
+function updateDocCounts() {
+  const all = docState.groups;
+  document.getElementById('docCountAll').textContent   = all.length;
+  document.getElementById('docCountExact').textContent = all.filter(g => g.tier === 'exact').length;
+  document.getElementById('docCountNear').textContent  = all.filter(g => g.tier === 'near').length;
+  document.getElementById('docStatExact').textContent  = all.filter(g => g.tier === 'exact').length;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async () => {
+  await loadTags();
+  await loadStats();
+  await loadCacheStats();
+  await loadSavedScans();
+  const status = await api('/status');
+  setScanStatus(status.running === true);
+  if (status.has_result) {
+    document.getElementById('statGroups').textContent    = status.groups;
+    document.getElementById('statUndecided').textContent = status.undecided;
+    if (status.folder) document.getElementById('folderInput').value = status.folder;
+    if (status.scan_id) state.currentScanId = status.scan_id;
+    await refreshGroups();
+    document.getElementById('saveScanBtn').style.display       = 'block';
+    document.getElementById('applyDecisionsBtn').style.display = 'block';
+    document.getElementById('photoApplySection').style.display = '';
+    document.getElementById('transferSection').style.display   = '';
+    if (status.folder) document.getElementById('transferSourceInput').value = status.folder;
+  }
+  // Check if a doc scan is already in progress or has results
+  const docStatus = await api('/doc_status');
+  if (docStatus.has_result) {
+    if (docStatus.folder) document.getElementById('docFolderInput').value = docStatus.folder;
+    document.getElementById('docStatFiles').textContent     = docStatus.total_docs;
+    document.getElementById('docStatGroups').textContent    = docStatus.total_groups;
+    document.getElementById('docStatUndecided').textContent = docStatus.undecided;
+    if (docStatus.total_groups > 0)
+      document.getElementById('docApplySection').style.display = '';
+    await refreshDocGroups();
+  }
+})();
+</script>
+</body>
+</html>
